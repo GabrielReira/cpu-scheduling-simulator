@@ -1,0 +1,75 @@
+https://lotusoregano.itch.io/operational-system-escalonator
+
+(1)
+Atividade 03 - Fase 1
+
+Processo    Tempo exec.     Prioridade      Deadline
+A           10              3               30
+B           6               1 (+ imp.)      22
+C           2               4               2
+D           4               5               5
+E           8               2               15
+
+quantum = 2
+
+Resultado esperado:
+FIFO    = 19,2
+SJF     = 14
+RR      = 27,60
+PRIOR   = 27
+EDF     = 18,60
+
+---------------------------------------------------
+---------------------------------------------------
+
+(2)
+Atividade 04 - Fase 2
+
+Processo    Tempo exec.     Prioridade      Deadline
+A           14              4               28
+B           4               1 (+ imp.)      6
+C           2               3               8
+D           6               5               13
+E           8               2               37
+
+quantum = 4
+
+Resultado esperado:
+FIFO    = 22,4
+SJF     = 14,8
+RR      = 23,8
+EDF     = 18,4
+
+---------------------------------------------------
+---------------------------------------------------
+
+(3)
+Atividade 05 - Fase 3
+
+Processo    Chegada     Tempo exec.     Deadline      
+A           0           4               7
+B           2           2               5
+C           4           1               8
+D           6           3               10
+
+quantum = 2
+
+Resultado esperado:
+FIFO    = 3,75
+SJF     = 3,5
+RR      = 5
+EDF     = 5
+
+---------------------------------------------------
+---------------------------------------------------
+
+(4)
+Exemplo para prioridade
+
+Processo    Chegada     Tempo exec.     Prioridade   
+A           0           3               1 (+imp.)
+B           0           4               3
+C           7           2               2
+
+Resultado esperado:
+PRIOR = 5,67

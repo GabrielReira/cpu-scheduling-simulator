@@ -63,8 +63,6 @@ def run_round_robin(processes, quantum, overhead):
     timeline = []
     time = 0
     queue = []  # queue of processes
-    last_was_interrupted = False  # True when last process still had remaining burst
-    last_pid = None  # track last running process
 
     # Move processes from unstarted to queue when they arrive
     def check_arrivals(t):
@@ -77,14 +75,7 @@ def run_round_robin(processes, quantum, overhead):
         if not queue:  # CPU idle until next arrival
             time = unstarted[0]["arrival"]
             check_arrivals(time)
-            last_was_interrupted = False
             continue
-
-        # Pay overhead if the previous process was interrupted
-        if last_was_interrupted:
-            timeline.append({"pid": last_pid, "start": time, "end": time + overhead, "type": "overhead"})
-            time += overhead
-            check_arrivals(time)
 
         # Takes the first process in the queue to run
         current = queue.pop(0)
@@ -93,16 +84,14 @@ def run_round_robin(processes, quantum, overhead):
         time += run_time
         current["remaining"] -= run_time
 
-        # New arrivals during the current process's execution are added to the queue before we check if 
-        # the current process needs to be re-queued
-        check_arrivals(time)
-
+        # Process was interrupted mid-burst -> pay overhead
         if current["remaining"] > 0:
+            time += overhead
+            timeline.append({"pid": current["id"], "start": time - overhead, "end": time, "type": "overhead"})
+            check_arrivals(time)  # check new arrivals during overhead time before re-queuing
             queue.append(current)
-            last_pid = current["id"]
-            last_was_interrupted = True
         else:
-            last_was_interrupted = False
+            check_arrivals(time)
 
     return timeline
 
@@ -121,8 +110,6 @@ def run_priority(processes, quantum, overhead):
     timeline = []
     time = 0
     queue = []
-    last_was_interrupted = False
-    last_pid = None
 
     def check_arrivals(t):
         while unstarted and unstarted[0]["arrival"] <= t:
@@ -134,14 +121,7 @@ def run_priority(processes, quantum, overhead):
         if not queue:
             time = unstarted[0]["arrival"]
             check_arrivals(time)
-            last_pid = None
-            last_was_interrupted = False
             continue
-        
-        if last_was_interrupted:
-            timeline.append({"pid": last_pid, "start": time, "end": time + overhead, "type": "overhead"})
-            time += overhead
-            check_arrivals(time)
 
         # Choose the highest priority process (lowest number), tiebreaker by arrival and ID
         chosen = min(queue, key=lambda p: (p["priority"], p["arrival"], p["id"]))
@@ -152,13 +132,13 @@ def run_priority(processes, quantum, overhead):
 
         check_arrivals(time)
 
+        # Process was interrupted mid-burst -> pay overhead
         if chosen["remaining"] > 0:
-            last_was_interrupted = True
-            last_pid = chosen["id"]
+            time += overhead
+            timeline.append({"pid": chosen["id"], "start": time - overhead, "end": time, "type": "overhead"})
+            check_arrivals(time)
         else:  # if finished, remove from queue and don't charge overhead
             queue.remove(chosen)
-            last_was_interrupted = False
-            last_pid = chosen["id"]
 
     return timeline
 
@@ -175,8 +155,6 @@ def run_edf(processes, quantum, overhead):
     timeline = []
     time = 0
     queue = []
-    last_was_interrupted = False
-    last_pid = None
 
     def check_arrivals(t):
         while unstarted and unstarted[0]["arrival"] <= t:
@@ -188,18 +166,11 @@ def run_edf(processes, quantum, overhead):
         if not queue:
             time = unstarted[0]["arrival"]
             check_arrivals(time)
-            last_pid = None
-            last_was_interrupted = False
             continue
         
-        if last_was_interrupted:
-            timeline.append({"pid": last_pid, "start": time, "end": time + overhead, "type": "overhead"})
-            time += overhead
-            check_arrivals(time)
-
         # Choose the process with the earliest deadline, tiebreaker by arrival and ID
         chosen = min(queue, key=lambda p: (p["deadline"], p["arrival"], p["id"]))
-        # If deadline is relative, we need to calculate absolute deadline as arrival + deadline
+        # If deadline is relative, we need to calculate absolute deadline as arrival+deadline
         # chosen = min(queue, key=lambda p: (p["arrival"] + p["deadline"], p["arrival"], p["id"]))
         run_time = min(quantum, chosen["remaining"])
         timeline.append({"pid": chosen["id"], "start": time, "end": time + run_time, "type": "running"})
@@ -209,11 +180,10 @@ def run_edf(processes, quantum, overhead):
         check_arrivals(time)
 
         if chosen["remaining"] > 0:
-            last_was_interrupted = True
-            last_pid = chosen["id"]
+            time += overhead
+            timeline.append({"pid": chosen["id"], "start": time - overhead, "end": time, "type": "overhead"})
+            check_arrivals(time)
         else:  # if finished, remove from queue and don't charge overhead
             queue.remove(chosen)
-            last_was_interrupted = False
-            last_pid = chosen["id"]
 
     return timeline

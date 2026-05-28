@@ -13,10 +13,10 @@ E           8               2               15
 quantum = 2
 
 Resultado esperado:
-FIFO    = 19,2
-SJF     = 14
+FIFO    = 19,20
+SJF     = 14,00
 RR      = 27,60
-PRIOR   = 27
+PRIOR   = 27,00
 EDF     = 18,60
 
 ---------------------------------------------------
@@ -38,6 +38,7 @@ Resultado esperado:
 FIFO    = 22,4
 SJF     = 14,8
 RR      = 23,8
+PRIOR   = 20,6
 EDF     = 18,4
 
 ---------------------------------------------------
@@ -71,5 +72,28 @@ A           0           3               1 (+imp.)
 B           0           4               3
 C           7           2               2
 
+quantum = 2
+
 Resultado esperado:
 PRIOR = 5,67
+
+---------------------------------------------------
+---------------------------------------------------
+
+(5)
+Caso base do documento de descrição do projeto
+
+
+Processo    Chegada     Tempo exec.     Deadline    Prioridade      
+P1           0          5               8           2
+P2           1          4               12          1
+P3           3          2               20          3
+
+quantum = 2
+
+Resultado esperado:
+FIFO    = 7,00
+SJF     = 6,33
+RR      = 10,33
+PRIOR   = 10,00
+EDF     = 9,67

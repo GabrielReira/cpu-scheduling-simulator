@@ -150,10 +150,10 @@ def build_gantt(processes, timeline, metrics):
     # Legend dummy traces
     anchor = pid_list[0] if pid_list else ""
     for name, color in [
-        ("Running",              COLORS["running"]),
-        ("Waiting",              COLORS["waiting"]),
-        ("Overhead (save)",      COLORS["overhead"]),
-        ("Running after DL",     COLORS["deadline"]),
+        ("Running",                COLORS["running"]),
+        ("Waiting",                COLORS["waiting"]),
+        ("Overhead",               COLORS["overhead"]),
+        ("Running after deadline", COLORS["deadline"]),
     ]:
         fig.add_trace(go.Bar(
             x=[0], y=[anchor], orientation="h",

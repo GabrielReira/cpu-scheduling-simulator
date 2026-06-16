@@ -185,5 +185,108 @@ def run_edf(processes, quantum, overhead):
             check_arrivals(time)
         else:  # if finished, remove from queue and don't charge overhead
             queue.remove(chosen)
+    
+    return timeline
 
+
+def run_cfs(processes, overhead):
+    """
+    CFS-Sim (Completely Fair Scheduler, simplified) - Preemptive.
+ 
+    Each process tracks a virtual runtime (vruntime) that grows proportionally
+    to real time and priority weight:
+        vruntime += Δt * w(priority) 
+        w(priority) = 1.25 ^ (priority - 1)
+    Rules:
+      - On arrival, vruntime is set to the current time
+      - At each step, the process with the minimum vruntime runs
+      - The time slice (delta_t) is calculated based on the minimum between the
+        remaining burst time and granular slice. Granular slice is the time required
+        for the current process vrtutime to match the vruntime of the next process
+        in the queue
+      - The time slice (delta_t) is the minimum between remaining burst and the
+        granular slice. Granular slice is the time for the current process's vruntime 
+        to catch up to the next process's vruntime [(next_vruntime-current_vruntime)/w]
+      - Preemption occurs when another process's vruntime is shorter than the
+        currently running process's vruntime
+      - Overhead applies only on an actual process switch (interrupted process
+        is displaced by a DIFFERENT process). If the same process remains
+        the minimum after its slice, it continues without overhead
+      - Lower priority number -> lower weight -> slower vruntime growth -> more CPU
+        time (consistent with the other algorithms where 1 = most important)
+    """
+    unstarted = sorted(
+        [dict(p, remaining=p["burst"], vruntime=0.0) for p in processes],
+        key=lambda p: (p["arrival"], p["id"])
+    )
+    timeline = []
+    time = 0
+    ready = []  # processes currently available to run
+    min_granularity = 1.0  # minimum time slice to prevent starvation
+    last_pid = None
+    last_was_interrupted = False
+ 
+    def check_arrivals(t):
+        # Newly arrived processes enter with vruntime = current time
+        while unstarted and unstarted[0]["arrival"] <= t:
+            p = unstarted.pop(0)
+            p["vruntime"] = float(t)
+            ready.append(p)
+ 
+    check_arrivals(time)
+ 
+    while ready or unstarted:
+        if not ready:  # CPU idle: jump to next arrival
+            time = unstarted[0]["arrival"]
+            check_arrivals(time)
+            last_pid = None
+            last_was_interrupted = False
+            continue
+ 
+        # Always pick the process with the smallest vruntime
+        current = min(ready, key=lambda p: (p["vruntime"], p["arrival"], p["id"]))
+ 
+        # Overhead fires only when the process actually changes
+        if last_was_interrupted and current["id"] != last_pid:
+            timeline.append({"pid": last_pid, "start": time, "end": time + overhead, "type": "overhead"})
+            time += overhead
+            check_arrivals(time)
+            if not ready:
+                last_pid = None
+                last_was_interrupted = False
+                continue
+            current = min(ready, key=lambda p: (p["vruntime"], p["arrival"], p["id"]))
+ 
+        w = 1.25 ** (current["priority"] - 1)
+ 
+        # Compute how long current process can run (delta_t) -> minimum between remaining and granular slice
+        remaining = current["remaining"]
+        if len(ready) > 1:  # calculate granular slice
+            next_vruntime = min(p["vruntime"] for p in ready if p["id"] != current["id"])
+            granular_slice = (next_vruntime - current["vruntime"]) / w
+            delta_t = min(remaining, granular_slice)
+        else:
+            delta_t = remaining
+        delta_t = max(min_granularity, delta_t)  # enforce minimum granularity
+        # Bound by next arrival so new processes can immediately preempt
+        if unstarted:
+            time_to_next = unstarted[0]["arrival"] - time
+            if time_to_next > 0:
+                delta_t = min(delta_t, time_to_next)
+ 
+        timeline.append({"pid": current["id"], "start": time, "end": time + delta_t, "type": "running"})
+        time += delta_t
+        current["remaining"] -= delta_t
+        current["vruntime"] += delta_t * w
+ 
+        check_arrivals(time)
+ 
+        if current["remaining"] > 0:
+            last_pid = current["id"]
+            last_was_interrupted = True
+        else:
+            ready.remove(current)
+            last_pid = current["id"]
+            last_was_interrupted = False
+ 
     return timeline

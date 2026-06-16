@@ -290,3 +290,90 @@ def run_cfs(processes, overhead):
             last_was_interrupted = False
  
     return timeline
+
+
+def run_dwarr(processes, overhead):
+    """
+    DWARR — Deadline-Weighted Adaptive Round-Robin (custom algorithm).
+
+    Combines EDF selection with a dynamic quantum that emerges from the deadline
+    gap between the current process and the next most urgent one.
+    - Selection: always pick the earliest deadline. Among equal deadlines, a
+    dispatch_count tiebreaker rotates through processes in round-robin fashion.
+    - Dynamic quantum:
+        quantum = max(1, min(remaining, next.deadline - current.deadline))
+        - Large gap  -> long uninterrupted run (process is far more urgent)
+        - Small gap  -> short quantum (fair sharing among close deadlines)
+        - Gap = 0    -> quantum = 1 (pure RR rotation)
+        - Alone      -> run to completion
+    - The slice is also bounded by the next arrival time.
+    - Overhead only on an actual process switch (same as CFS).
+    """
+    unstarted = sorted(
+        [dict(p, remaining=p["burst"]) for p in processes],
+        key=lambda p: (p["arrival"], p["id"])
+    )
+    timeline = []
+    time = 0
+    queue = []
+    last_pid = None
+    last_was_interrupted = False
+    dispatch_count = {p["id"]: 0 for p in processes}
+
+    def check_arrivals(t):
+        while unstarted and unstarted[0]["arrival"] <= t:
+            queue.append(unstarted.pop(0))
+
+    check_arrivals(0)
+
+    while queue or unstarted:
+        if not queue:
+            time = unstarted[0]["arrival"]
+            check_arrivals(time)
+            last_pid = None
+            last_was_interrupted = False
+            continue
+
+        chosen = min(queue, key=lambda p: (p["deadline"], dispatch_count[p["id"]], p["arrival"], p["id"]))
+
+        if last_was_interrupted and chosen["id"] != last_pid:
+            timeline.append({"pid": last_pid, "start": time, "end": time + overhead, "type": "overhead"})
+            time += overhead
+            check_arrivals(time)
+            if not queue:
+                last_pid = None
+                last_was_interrupted = False
+                continue
+            chosen = min(queue, key=lambda p: (p["deadline"], dispatch_count[p["id"]], p["arrival"], p["id"]))
+
+        others = [p for p in queue if p["id"] != chosen["id"]]
+        if not others:
+            quantum = chosen["remaining"]
+        else:
+            next_proc = min(others, key=lambda p: (p["deadline"], p["arrival"], p["id"]))
+            deadline_gap = next_proc["deadline"] - chosen["deadline"]
+            quantum = max(1, min(chosen["remaining"], deadline_gap))
+
+        if unstarted:
+            time_to_next = unstarted[0]["arrival"] - time
+            if time_to_next > 0:
+                quantum = min(quantum, time_to_next)
+
+        quantum = max(1, int(quantum))
+        quantum = min(quantum, chosen["remaining"])
+
+        dispatch_count[chosen["id"]] += 1
+        timeline.append({"pid": chosen["id"], "start": time, "end": time + quantum, "type": "running"})
+        time += quantum
+        chosen["remaining"] -= quantum
+        check_arrivals(time)
+
+        if chosen["remaining"] > 0:
+            last_pid = chosen["id"]
+            last_was_interrupted = True
+        else:
+            queue.remove(chosen)
+            last_pid = chosen["id"]
+            last_was_interrupted = False
+
+    return timeline

@@ -3,7 +3,8 @@ from dash import dcc, html, Input, Output, State, ALL, ctx
 import dash_bootstrap_components as dbc
 from utils.style import COLORS, CARD_STYLE, LABEL_STYLE, HEADER_STYLE
 from utils.metrics_and_gantt import compute_metrics, build_gantt
-from utils.algorithms import run_fifo, run_sjf, run_round_robin, run_priority, run_edf, run_cfs
+from utils.algorithms import (run_fifo, run_sjf, run_round_robin, run_priority, 
+                              run_edf, run_cfs, run_dwarr)
 
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
@@ -25,7 +26,7 @@ app.layout = html.Div(style={"background": COLORS["bg"], "minHeight": "100vh", "
     # Title
     html.Div([
         html.H2("⚙ Single-core CPU Scheduling Simulator ⚙", style={**HEADER_STYLE, "fontSize": "22px"}),
-        html.P("FIFO · SJF · Round-Robin · Priority · Earliest Deadline First",
+        html.P("First-In First-Out · Shortest Job First · Round-Robin · Priority · Earliest Deadline First · Completely Fair Scheduler · Deadline-Weighted Adaptive Round Robin",
                style={"color": COLORS["muted"], "fontSize": "12px", "marginBottom": "0"}),
     ], style={"marginBottom": "20px"}),
 
@@ -71,7 +72,8 @@ app.layout = html.Div(style={"background": COLORS["bg"], "minHeight": "100vh", "
                     dbc.Button("RR",       id="btn-rr",       n_clicks=0, size="sm", outline=True, color="info"),
                     dbc.Button("Priority", id="btn-priority", n_clicks=0, size="sm", outline=True, color="info"),
                     dbc.Button("EDF",      id="btn-edf",      n_clicks=0, size="sm", outline=True, color="info"),
-                    dbc.Button("CFS",      id="btn-cfs",      n_clicks=0, size="sm", outline=True, color="info")
+                    dbc.Button("CFS",      id="btn-cfs",      n_clicks=0, size="sm", outline=True, color="info"),
+                    dbc.Button("DWARR",    id="btn-dwarr",    n_clicks=0, size="sm", outline=True, color="info")
                 ], className="d-flex flex-wrap gap-1"),
                 html.Div(id="btn-warning", style={"color": "#f87171", "fontSize": "11px", "marginTop": "6px"}),
             ])
@@ -130,12 +132,13 @@ def store_processes(pids, arrivals, bursts, priorities, deadlines):
     Input("btn-priority", "n_clicks"),
     Input("btn-edf",      "n_clicks"),
     Input("btn-cfs",      "n_clicks"),
+    Input("btn-dwarr",    "n_clicks"),
     State("store-processes", "data"),
     State("quantum",  "value"),
     State("overhead", "value"),
     prevent_initial_call=True,
 )
-def run_algorithm(n_fifo, n_sjf, n_rr, n_pri, n_edf, n_cfs, processes, quantum, overhead):
+def run_algorithm(n_fifo, n_sjf, n_rr, n_pri, n_edf, n_cfs, n_dwarr, processes, quantum, overhead):
     triggered = ctx.triggered_id
     if not processes:
         return html.P("Fill in at least the burst time for each process.", style={"color": COLORS["muted"]}), ""
@@ -154,6 +157,9 @@ def run_algorithm(n_fifo, n_sjf, n_rr, n_pri, n_edf, n_cfs, processes, quantum, 
     if triggered == "btn-cfs":
         if any(p["priority"] is None for p in processes):
             return dash.no_update, "All processes need a priority value to use CFS."
+    if triggered == "btn-dwarr":
+        if any(p["deadline"] is None for p in processes):
+            return dash.no_update, "All processes need a deadline to use DWARR."
 
     # Run selected algorithm
     algorithm_label = {
@@ -162,7 +168,8 @@ def run_algorithm(n_fifo, n_sjf, n_rr, n_pri, n_edf, n_cfs, processes, quantum, 
         "btn-rr":       "Round-Robin (Preemptive)",
         "btn-priority": "Priority (Preemptive)",
         "btn-edf":      "EDF (Preemptive)",
-        "btn-cfs":      "CFS (Preemptive)"
+        "btn-cfs":      "CFS (Preemptive)",
+        "btn-dwarr":    "DWARR (Preemptive)"
     }[triggered]
 
     if triggered == "btn-fifo":
@@ -177,6 +184,8 @@ def run_algorithm(n_fifo, n_sjf, n_rr, n_pri, n_edf, n_cfs, processes, quantum, 
         timeline = run_edf(processes, quantum, overhead)
     elif triggered == "btn-cfs":
         timeline = run_cfs(processes, overhead)
+    elif triggered == "btn-dwarr":
+        timeline = run_dwarr(processes, overhead)
     else:
         return dash.no_update, ""
 

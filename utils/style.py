@@ -11,11 +11,6 @@ COLORS = {
     "accent":    "#38bdf8",
 }
 
-PROCESS_COLORS = [
-    "#38bdf8", "#818cf8", "#fb923c", "#a78bfa",
-    "#34d399", "#f472b6", "#facc15", "#60a5fa",
-]
-
 CARD_STYLE = {
     "background": COLORS["card"],
     "border": f"1px solid {COLORS['border']}",

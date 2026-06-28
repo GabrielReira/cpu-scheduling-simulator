@@ -273,7 +273,8 @@ def run_cfs(processes, overhead):
             time_to_next = unstarted[0]["arrival"] - time
             if time_to_next > 0:
                 delta_t = min(delta_t, time_to_next)
- 
+        delta_t = min(delta_t, remaining)
+        
         timeline.append({"pid": current["id"], "start": time, "end": time + delta_t, "type": "running"})
         time += delta_t
         current["remaining"] -= delta_t

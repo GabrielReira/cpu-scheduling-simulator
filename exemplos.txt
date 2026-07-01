@@ -112,4 +112,4 @@ P4          5           11              2           40
 
 Resultado esperado:
 CFS   = 34,31
-DWARR = (algoritmo ainda será modificado)
+DWARR = 21,25

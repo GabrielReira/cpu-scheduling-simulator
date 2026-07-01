@@ -295,20 +295,37 @@ def run_cfs(processes, overhead):
 
 def run_dwarr(processes, overhead):
     """
-    DWARR — Deadline-Weighted Adaptive Round-Robin (custom algorithm).
-
-    Combines EDF selection with a dynamic quantum that emerges from the deadline
-    gap between the current process and the next most urgent one.
-    - Selection: always pick the earliest deadline. Among equal deadlines, a
-    dispatch_count tiebreaker rotates through processes in round-robin fashion.
-    - Dynamic quantum:
-        quantum = max(1, min(remaining, next.deadline - current.deadline))
-        - Large gap  -> long uninterrupted run (process is far more urgent)
-        - Small gap  -> short quantum (fair sharing among close deadlines)
-        - Gap = 0    -> quantum = 1 (pure RR rotation)
-        - Alone      -> run to completion
-    - The slice is also bounded by the next arrival time.
-    - Overhead only on an actual process switch (same as CFS).
+    DWARR (Deadline-Weighted Adaptive Round-Robin) - Preemptive.
+    Custom algorithm.
+ 
+    The goal: care about deadlines without letting any single process
+    monopolize the CPU. Three simple rules drive everything:
+ 
+    1. URGENCY BAND — who is eligible to run?
+    - Find the most urgent ready process (earliest deadline)
+    - Its remaining burst defines a window W
+    - All processes whose deadline falls within W of that earliest deadline
+      enter the "urgency band" and are considered comparably urgent
+    - Processes outside the band wait, they are not yet time-critical
+ 
+    2. SELECTION — who runs next?
+    - Within the band, rotate via dispatch_count (round-robin)
+    - The least-recently-dispatched process in the band is chosen
+    - This prevents any single process from monopolizing the band
+ 
+    3. DYNAMIC QUANTUM — for how long?
+    - Compute the deadline gap between the chosen process and its
+      nearest competitor inside the band:
+        quantum = min(remaining, nearest_deadline_gap)
+        - gap = 0  (same deadline)    -> quantum = 1  (pure RR)
+        - gap small (deadlines close) -> quantum small (fine interleaving)
+        - gap large (deadlines far)   -> quantum large (chosen dominates longer)
+        - alone in band               -> quantum = remaining (run to completion)
+ 
+    The window W shrinks as the most urgent process executes, so the band
+    naturally tightens over time, giving increasing priority to whoever
+    is closest to its deadline.
+    Overhead fires only on an actual process switch.
     """
     unstarted = sorted(
         [dict(p, remaining=p["burst"]) for p in processes],
@@ -320,23 +337,43 @@ def run_dwarr(processes, overhead):
     last_pid = None
     last_was_interrupted = False
     dispatch_count = {p["id"]: 0 for p in processes}
-
+ 
     def check_arrivals(t):
         while unstarted and unstarted[0]["arrival"] <= t:
             queue.append(unstarted.pop(0))
-
+ 
+    def select_and_quantum():
+        # Step 1: urgency window from the most urgent process
+        earliest = min(queue, key=lambda p: (p["deadline"], p["arrival"], p["id"]))
+        window = earliest["remaining"]
+        band = [p for p in queue if p["deadline"] - earliest["deadline"] <= window]
+ 
+        # Step 2: round-robin rotation within the band
+        chosen = min(band, key=lambda p: (dispatch_count[p["id"]], p["deadline"], p["arrival"], p["id"]))
+ 
+        # Step 3: quantum from nearest deadline gap inside the band
+        others = [p for p in band if p["id"] != chosen["id"]]
+        if not others:
+            quantum = chosen["remaining"]   # run to completion
+        else:
+            nearest_gap = min(abs(p["deadline"] - chosen["deadline"]) for p in others)
+            quantum = max(1, min(chosen["remaining"], nearest_gap if nearest_gap > 0 else 1))
+ 
+        return chosen, quantum
+ 
     check_arrivals(0)
-
+ 
     while queue or unstarted:
-        if not queue:
+        if not queue:  # CPU idle: jump to next arrival
             time = unstarted[0]["arrival"]
             check_arrivals(time)
             last_pid = None
             last_was_interrupted = False
             continue
-
-        chosen = min(queue, key=lambda p: (p["deadline"], dispatch_count[p["id"]], p["arrival"], p["id"]))
-
+ 
+        chosen, quantum = select_and_quantum()
+ 
+        # Overhead fires only when the process actually changes
         if last_was_interrupted and chosen["id"] != last_pid:
             timeline.append({"pid": last_pid, "start": time, "end": time + overhead, "type": "overhead"})
             time += overhead
@@ -345,30 +382,21 @@ def run_dwarr(processes, overhead):
                 last_pid = None
                 last_was_interrupted = False
                 continue
-            chosen = min(queue, key=lambda p: (p["deadline"], dispatch_count[p["id"]], p["arrival"], p["id"]))
-
-        others = [p for p in queue if p["id"] != chosen["id"]]
-        if not others:
-            quantum = chosen["remaining"]
-        else:
-            next_proc = min(others, key=lambda p: (p["deadline"], p["arrival"], p["id"]))
-            deadline_gap = next_proc["deadline"] - chosen["deadline"]
-            quantum = max(1, min(chosen["remaining"], deadline_gap))
-
+            chosen, quantum = select_and_quantum()
+ 
+        # Prevent the current process from running past the next arrival
         if unstarted:
             time_to_next = unstarted[0]["arrival"] - time
             if time_to_next > 0:
                 quantum = min(quantum, time_to_next)
-
-        quantum = max(1, int(quantum))
         quantum = min(quantum, chosen["remaining"])
-
+ 
         dispatch_count[chosen["id"]] += 1
         timeline.append({"pid": chosen["id"], "start": time, "end": time + quantum, "type": "running"})
         time += quantum
         chosen["remaining"] -= quantum
         check_arrivals(time)
-
+ 
         if chosen["remaining"] > 0:
             last_pid = chosen["id"]
             last_was_interrupted = True
@@ -376,5 +404,5 @@ def run_dwarr(processes, overhead):
             queue.remove(chosen)
             last_pid = chosen["id"]
             last_was_interrupted = False
-
+ 
     return timeline

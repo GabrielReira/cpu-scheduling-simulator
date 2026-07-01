@@ -26,7 +26,7 @@ app.layout = html.Div(style={"background": COLORS["bg"], "minHeight": "100vh", "
     # Title
     html.Div([
         html.H2("⚙ Single-core CPU Scheduling Simulator ⚙", style={**HEADER_STYLE, "fontSize": "22px"}),
-        html.P("First-In First-Out · Shortest Job First · Round-Robin · Priority · Earliest Deadline First · Completely Fair Scheduler · Deadline-Weighted Adaptive Round Robin",
+        html.P("First-In First-Out · Shortest Job First · Round-Robin · Priority · Earliest Deadline First · Completely Fair Scheduler · Deadline-Weighted Adaptive Round-Robin",
                style={"color": COLORS["muted"], "fontSize": "12px", "marginBottom": "0"}),
     ], style={"marginBottom": "20px"}),
 
